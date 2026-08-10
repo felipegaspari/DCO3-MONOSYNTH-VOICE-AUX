@@ -19,6 +19,8 @@ Helper MCU for **post-filter** controls. Architecture: [`../../DCO/docs/DUAL_MCU
 
 FX IDs 55–56 reserved in `params_def.h` (stubs only).
 
+DCO-owned IDs **216–223** (`PARAM_LFO1_TO_OSC1` … `PARAM_ADSR3_PITCH_MODE`, including Character 221 and ADSR1→VCA 222) are in `params_def.h` for ID stability only. `update_parameters` does not apply them (no voice / Character / EnvDCO engine on this MCU).
+
 Each `loop()` calls `mod_matrix_apply_dist()` so LFO/ADSR stubs / local Random can move Dist Drive without a new param frame.
 
 ## Pinout

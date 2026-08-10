@@ -178,6 +178,12 @@ enum ParamId : uint16_t {
   PARAM_LFO2_TO_OSC2_COARSE      = 219,
   PARAM_LFO2_TO_OSC3_COARSE      = 220,
 
+  // Character amount (0..128). DCO-owned; enum for ID stability.
+  PARAM_CHARACTER                = 221,
+
+  // EnvVCA → VCA amount. DCO-owned; enum for ID stability.
+  PARAM_ADSR1_TO_VCA             = 222,
+
   // EnvDCO → pitch tap: 0 unipolar (default), 1 centered ((env−16384)<<1; mid S ≈ note, ±2 oct @ full CW).
   PARAM_ADSR3_PITCH_MODE         = 223,
 
