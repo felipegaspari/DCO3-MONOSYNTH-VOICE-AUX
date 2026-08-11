@@ -3,22 +3,27 @@
 
 #include <stdint.h>
 
-// Central definition of all parameter IDs used across MCUs.
-// This DCO header mirrors the mainboard's params_def.h numeric values
-// so that parameters sent over Serial are interpreted consistently.
+// Canonical definition of every parameter ID used across MCUs, shared verbatim
+// by DCO, Mainboard, Input and Screen in both DCO3-MONOSYNTH and DCO4-REBORN.
+// It is the union of both synths' parameters: a board simply has no handler for
+// the IDs it does not implement (e.g. the sub-oscillator block 90–99 is
+// DCO3-only, and 170–173 are handled by the DCO alone). Keeping one enum means a
+// given number always means the same thing on every wire in both instruments.
 //
 // IMPORTANT:
 //   - Do not change numeric values of existing IDs.
 //   - New parameters should get new, unused numbers.
 //   - The meaning of each ID (name + number) should be stable across MCUs.
+//   - Edit this file in DCO3-MONOSYNTH/DCO and copy it to the other six trees;
+//     `tools/dco_control/gen_midi_map.py --check` diffs against it.
 
 enum ParamId : uint16_t {
-  // --- Per-osc analog wave enables (74HC595 → DG411) ------------------
-  PARAM_OSC1_SAW_ENABLE          = 1,
-  PARAM_OSC1_PULSE_ENABLE        = 2,
-  PARAM_OSC1_TRI_ENABLE          = 3,
-  PARAM_SINE_STATUS              = 4,   // deprecated
-  // 5, 6: unused (were PARAM_SQR1/SQR2_STATUS)
+  // --- Per-osc analog wave enables (74HC595 → DG411). See docs/WAVE_MUX.md ---
+  PARAM_OSC1_SAW_ENABLE          = 1,   // was PARAM_SAW_STATUS
+  PARAM_OSC1_PULSE_ENABLE        = 2,   // was PARAM_SAW2_STATUS
+  PARAM_OSC1_TRI_ENABLE          = 3,   // was PARAM_TRI_STATUS
+  PARAM_SINE_STATUS              = 4,   // deprecated (no mux role); keep ID
+  // 5, 6: unused (were PARAM_SQR1/SQR2_STATUS) — reserved, do not reuse casually
 
   PARAM_RESONANCE_COMPENSATION   = 7,   // mainboard-local
   PARAM_VCA_ADSR_RESTART         = 8,   // mainboard-local
@@ -30,7 +35,7 @@ enum ParamId : uint16_t {
   PARAM_LFO1_WAVEFORM            = 11,
   PARAM_LFO2_WAVEFORM            = 12,
 
-  PARAM_OSC1_INTERVAL            = 13,
+  PARAM_OSC1_INTERVAL            = 13,  // octave_shift (global); id kept for wire compat
   PARAM_OSC2_INTERVAL            = 14,
 
   PARAM_OSC2_DETUNE_VAL          = 15,
@@ -70,8 +75,8 @@ enum ParamId : uint16_t {
   PARAM_OSC3_DETUNE_VAL          = 34,
   PARAM_LFO2_TO_OSC3              = 35,
 
-  // 36: sync flavour. 0 = hard sync (master sidesets onto the slave's reset pin),
-  // 1 = soft sync (slave polls the master and ignores edges early in its own cycle).
+  // 36: sync flavour. 0 = hard sync (master sidesets onto the slave's reset pin);
+  // 1..3 = soft sync with that many trailing polled ramp chunks (~40%/67%/86% receptive).
   PARAM_SOFT_SYNC                = 36,
 
   // 37: sub-oscillator divide. 0 = off, 2 = one octave down, 4 = two octaves.
@@ -108,8 +113,9 @@ enum ParamId : uint16_t {
   // PARAM_FX_PROGRAM             = 55,
   // PARAM_FX_MIX                 = 56,
 
-  // Mod matrix: 8 slots × (source, dest, depth). See DCO/docs/MOD_MATRIX.md.
-  // Source 0..11; dest 0..8; depth bipolar int16.
+  // Mod matrix: 8 slots × (source, dest, depth). See docs/MOD_MATRIX.md.
+  // Source 0..15 (0xFF/out-of-range = empty); dest 0..11; depth bipolar int16.
+  // Pitch dest (9): ±1023 → ±1 octave (see mod_matrix.h MOD_PITCH_DEPTH_FULL).
   PARAM_MOD_SLOT0_SOURCE         = 60,
   PARAM_MOD_SLOT0_DEST           = 61,
   PARAM_MOD_SLOT0_DEPTH          = 62,
@@ -135,12 +141,42 @@ enum ParamId : uint16_t {
   PARAM_MOD_SLOT7_DEST           = 82,
   PARAM_MOD_SLOT7_DEPTH          = 83,
 
+  // OSC2/OSC3 wave enables (OSC1 uses IDs 1–3)
   PARAM_OSC2_SAW_ENABLE          = 84,
   PARAM_OSC2_PULSE_ENABLE        = 85,
   PARAM_OSC2_TRI_ENABLE          = 86,
   PARAM_OSC3_SAW_ENABLE          = 87,
   PARAM_OSC3_PULSE_ENABLE        = 88,
   PARAM_OSC3_TRI_ENABLE          = 89,
+
+  // --- Sub-oscillators (ENABLE_SUBOSC_ENGINE2; RP2350 only) ---------------------------
+  // Two subs, and the boolean combination of them is the output that gets mixed. See
+  // docs/PIO_OSCILLATORS.md section 9. On builds without the engine, SUB1_DIVIDE falls back to
+  // the single legacy sub (same as PARAM_SUBOSC_DIVIDE) and the rest are ignored.
+  //
+  // Divide: 0 = off, 1 = master rate (phase / PWM only), 2..8 master periods per sub period.
+  // Odd ratios are legal and give non-octave subharmonics (3 = an octave and a fifth down).
+  PARAM_SUB1_DIVIDE              = 90,
+  PARAM_SUB2_DIVIDE              = 91,
+  // Master: which oscillator's reset the sub locks to, 0..2 = OSC1..OSC3. Both subs on one
+  // master gives harmonic pulse patterns; different masters gives ring-mod beating that tracks
+  // their detune. 92 and 95 were the third sub's divide and phase, which never shipped.
+  PARAM_SUB1_MASTER              = 92,
+  PARAM_SUB2_MASTER              = 95,
+  // Phase: rising-edge delay after the master's reset, 0..359 degrees of the *master* period
+  // (shifting a sub by whole master periods is inaudible, so that is the useful range).
+  PARAM_SUB1_PHASE               = 93,
+  PARAM_SUB2_PHASE               = 94,
+  // Width: duty in 1/256ths of the sub period, 1..255. 128 = the classic 50% square.
+  PARAM_SUB1_WIDTH               = 96,
+  PARAM_SUB2_WIDTH               = 97,
+  // 98 and 100 are reserved: they were the third sub's width and the combiner's pair selector,
+  // and the pair is fixed now that there are exactly two subs on adjacent pads.
+  //
+  // Boolean logic combiner: both subs in, one square out. Digital ring modulation, plus two
+  // pass-throughs so this one pad carries everything the sub section can produce.
+  // 0 = off, 1 = XOR, 2 = AND, 3 = OR, 4 = XNOR, 5 = NAND, 6 = NOR, 7 = sub 1, 8 = sub 2.
+  PARAM_SUB_LOGIC_OP             = 99,
 
   // --- Misc / control / UI flags ------------------------------------
   // Calibration mode selector (screen/UI only for now)
@@ -165,23 +201,25 @@ enum ParamId : uint16_t {
   PARAM_UI_CALIBRATION_DISMISS   = 199,
   PARAM_UI_CALIBRATION_MENU_MODE = 200,
 
-  // Reserved / screen-only extras (future expansion)
+  // Pulse width (was Input 'f' block). Voice engine stores PW[0] = value / 4.
   PARAM_PW_VALUE                 = 210,
   PARAM_LFO3_SPEED               = 211,
   PARAM_LFO3_WAVEFORM            = 212,
   PARAM_ADSR3_RESTART            = 214,
   PARAM_VCA_LEVEL_ALT            = 215,
 
+  // Additive LFO1 pitch depth per osc (stacks on PARAM_LFO1_TO_DCO global bus).
   PARAM_LFO1_TO_OSC1             = 216,
   PARAM_LFO1_TO_OSC2             = 217,
   PARAM_LFO1_TO_OSC3             = 218,
+  // LFO2 coarse pitch per osc (0..511; LFO1 curve + amp scale baked into depth at apply).
   PARAM_LFO2_TO_OSC2_COARSE      = 219,
   PARAM_LFO2_TO_OSC3_COARSE      = 220,
 
-  // Character amount (0..128). DCO-owned; enum for ID stability.
+  // Character amount (0..128). dco_control Character tab; storage only for now.
   PARAM_CHARACTER                = 221,
 
-  // EnvVCA → VCA amount. DCO-owned; enum for ID stability.
+  // EnvVCA → VCA amount (was Input 'e' block).
   PARAM_ADSR1_TO_VCA             = 222,
 
   // EnvDCO → pitch tap: 0 unipolar (default), 1 centered ((env−16384)<<1; mid S ≈ note, ±2 oct @ full CW).
@@ -202,11 +240,29 @@ enum ParamId : uint16_t {
   // 156: explicit "store manual calibration offsets" command.
   PARAM_MANUAL_CALIBRATION_STORE = 156,
 
-  // 160: bench diagnostic trigger (DCO-local, no panel UI). Prints to USB serial.
+  // --- Preset store / dump commands (DCO-local; tools/dco_control) -----
+  // See preset_store.h for the record format and the '[dump]'/'[pdir]'/
+  // '[preset]'/'[bulk]' text protocol on USB CDC.
+  PARAM_PRESET_SAVE              = 170,  // value = slot 0..255: save live state
+  PARAM_PRESET_LOAD              = 171,  // value = slot 0..255: recall slot
+  PARAM_PRESET_DUMP              = 172,  // -1 = directory, 0..255 = slot record hex
+  PARAM_CAL_DUMP                 = 173,  // 0/-1 = all cal tables, 1..5 = one (CAL_DUMP_*)
+
+  // 160: bench / debug trigger (DCO-local; dco_control Diagnostics + Calibration + Character).
   // 1 = PIO topology report, 2 = period probe at a low divider,
   // 3 = period probe at a high divider. See DCO/docs/PIO_OSCILLATORS.md section 12.
   // 10 = dump profiler once, 11 = reset profiler, 12 = toggle ~1 Hz dump
   // (RUNNING_AVERAGE builds only). See DCO/docs/BENCHMARKING.md.
+  // 13 = SRAM / heap / per-core stack dump (ENABLE_MEM_DIAG; runtime polls on).
+  // 14 / 15 = mem_diag loop polls off / on. See MEMORY.md.
+  // 20–22 amp-comp method, 24–25 amp benches, 26–27 note retrig, 28–29 pitch benches.
+  // 30 = force-seed fake amp-comp + PW tables.
+  // 32–33 clkdiv GOLD_REF / GOLD_LIVE / FLOAT_LIVE / Q16 / Q8 / FAST_Q4
+  // (both voice engines; RUNNING_AVERAGE). 2=Q16 shipping, 3=Q8 A/B.
+  // 200–50000 = set pioPulseLength (reset pulse Y cycles); unsigned 16-bit on wire.
+  // Also reloads running SMs via pio_defer_request_reset_pulse_all().
+  // Packed Character jitter setters (unsigned 16-bit, hi|lo, lo = 0..128):
+  //   0xC8xx ampCompJitter, 0xCAxx pitchJitter, 0xCBxx pulsewidthJitter.
   PARAM_DEBUG_COMMAND            = 160
 };
 
