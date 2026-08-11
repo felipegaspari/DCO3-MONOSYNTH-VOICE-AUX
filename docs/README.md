@@ -38,7 +38,7 @@ Full map: [`PINOUT.md`](PINOUT.md). PCM5102 listen: [`I2S_NOISE.md`](I2S_NOISE.m
 
 ## Build
 
-Arduino-Pico / RP2040 board. Open `VOICE-AUX/` (folder symlink `VOICE-AUX` → `.` for the IDE). Pass `--libraries ./_build_libs` so the `DCO_Noise` symlink resolves. On the DCO sketch, enable `#define ENABLE_VOICE_AUX` so Dist PWM writers stay compiled but do not claim GP9/GP26.
+Arduino-Pico / RP2040 board. Open `VOICE-AUX/` (folder symlink `VOICE-AUX` → `.` for the IDE). Pass `--libraries ./_build_libs` so the `DCO_Noise` / `DCO-PROTOCOL` symlinks resolve for CLI builds. Sketch-root shims (`params_def.h`, etc.) forward into `_build_libs/DCO-PROTOCOL` so Arduino IDE finds those headers without `--libraries`. On the DCO sketch, enable `#define ENABLE_VOICE_AUX` so Dist PWM writers stay compiled but do not claim GP9/GP26.
 
 ## Boot note
 
